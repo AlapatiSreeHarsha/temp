@@ -4,6 +4,7 @@ import os
 from git import Repo
 import subprocess
 from pathlib import Path
+from datetime import datetime
 
 # Configure Gemini API
 GOOGLE_API_KEY = "AIzaSyCNX0JbZuCp-c3283WtCDpp5rJ_Q0sPfcs"
@@ -43,65 +44,21 @@ def list_branches():
     except Exception as e:
         return str(e)
 
-def get_remote_url():
-    """Get the remote repository URL"""
+def push_to_repo(repo_url):
+    """Push directly to the specified repository URL"""
     try:
-        repo = Repo('.')
-        if repo.remotes:
-            return repo.remotes.origin.url
-        return "No remote repository configured"
+        # Add all changes
+        execute_git_command('git add .')
+        
+        # Commit changes
+        commit_message = "Auto-commit: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        execute_git_command(f'git commit -m "{commit_message}"')
+        
+        # Push directly to the URL
+        result = execute_git_command(f'git push {repo_url} HEAD:main')
+        return f"Successfully pushed changes: {result}"
     except Exception as e:
-        return str(e)
-
-def setup_remote_repo(repo_url):
-    """Set up remote repository"""
-    try:
-        repo = Repo('.')
-        if not repo.remotes:
-            repo.create_remote('origin', repo_url)
-            return True
-        return False
-    except Exception as e:
-        return str(e)
-
-def push_to_remote(branch_name=None, force=False):
-    """Push changes to remote repository with proper error handling"""
-    try:
-        repo = Repo('.')
-        
-        # Check if remote exists
-        if not repo.remotes:
-            return "No remote repository configured. Please add a remote repository first."
-        
-        # Get the current branch if none specified
-        if not branch_name:
-            branch_name = repo.active_branch.name
-        
-        # Check if there are changes to commit
-        if repo.is_dirty():
-            return "You have uncommitted changes. Please commit your changes first."
-        
-        # Check if there are commits to push
-        if not repo.head.is_valid():
-            return "No commits to push."
-        
-        # Prepare push command
-        push_command = f"git push origin {branch_name}"
-        if force:
-            push_command += " --force"
-        
-        # Execute push
-        result = execute_git_command(push_command)
-        
-        # Check for common push errors
-        if "rejected" in result.lower():
-            return "Push rejected. You may need to pull changes first or use force push."
-        elif "not found" in result.lower():
-            return "Remote branch not found. You may need to set the upstream branch."
-        
-        return result
-    except Exception as e:
-        return f"Error during push: {str(e)}"
+        return f"Error pushing changes: {str(e)}"
 
 def process_git_request(user_input):
     """Process user input and execute appropriate Git commands"""
@@ -116,10 +73,8 @@ def process_git_request(user_input):
     - Delete branch: git branch -d <branch_name>
     
     Push/Pull Operations:
-    - Push current branch: git push origin <current_branch>
-    - Push all branches: git push --all origin
-    - Pull latest changes: git pull origin <current_branch>
-    - Set upstream branch: git push -u origin <branch_name>
+    - Push to URL: git push <repository_url> HEAD:main
+    - Pull from URL: git pull <repository_url>
     
     Commit Operations:
     - Add all files: git add .
@@ -159,27 +114,27 @@ with col1:
     st.code('\n'.join(branches), language="bash")
 
 with col2:
-    # Display remote repository information
-    st.subheader("Remote Repository")
-    remote_url = get_remote_url()
-    st.code(remote_url, language="bash")
+    # Display current status
+    st.subheader("Current Status")
+    status = execute_git_command("git status")
+    st.code(status, language="bash")
 
-# Remote Repository Setup
-st.subheader("Remote Repository Setup")
-repo_url = st.text_input("Enter Remote Repository URL (if not configured):", 
+# Quick Push
+st.subheader("Quick Push")
+repo_url = st.text_input("Enter Repository URL to push:", 
                         placeholder="https://github.com/username/repository.git")
-if st.button("Configure Remote"):
+
+if st.button("Push to Repository"):
     if repo_url:
-        result = setup_remote_repo(repo_url)
-        if result is True:
-            st.success("Remote repository configured successfully!")
-        else:
-            st.error(f"Error configuring remote: {result}")
-        st.rerun()
+        with st.spinner("Pushing changes..."):
+            result = push_to_repo(repo_url)
+            st.code(result, language="bash")
+    else:
+        st.warning("Please enter a repository URL")
 
 # User input
 user_input = st.text_area("What would you like to do with your Git repository?", 
-                         placeholder="Example: Create a new branch called 'feature' and push it to remote")
+                         placeholder="Example: Push to https://github.com/username/repository.git")
 
 if st.button("Execute"):
     if user_input:
@@ -190,11 +145,6 @@ if st.button("Execute"):
     else:
         st.warning("Please enter a command or request.")
 
-# Display current Git status
-st.subheader("Current Repository Status")
-status = execute_git_command("git status")
-st.code(status, language="bash")
-
 # Display recent commits
 st.subheader("Recent Commits")
 commits = execute_git_command("git log --oneline -n 5")
@@ -202,33 +152,14 @@ st.code(commits, language="bash")
 
 # Quick Actions
 st.subheader("Quick Actions")
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("Push Current Branch"):
-        result = push_to_remote()
-        st.code(result, language="bash")
-        if "Error" not in result and "rejected" not in result:
-            st.success("Push successful!")
-        st.rerun()
-
-with col2:
-    if st.button("Pull Latest Changes"):
-        current_branch = get_current_branch()
-        result = execute_git_command(f"git pull origin {current_branch}")
-        st.code(result, language="bash")
-        st.rerun()
-
-with col3:
     if st.button("Show All Branches"):
         result = execute_git_command("git branch -a")
         st.code(result, language="bash")
 
-# Force Push Option
-st.subheader("Advanced Push Options")
-force_push = st.checkbox("Force Push (Use with caution!)")
-if force_push:
-    if st.button("Force Push Current Branch"):
-        result = push_to_remote(force=True)
+with col2:
+    if st.button("Show Status"):
+        result = execute_git_command("git status")
         st.code(result, language="bash")
-        st.rerun()

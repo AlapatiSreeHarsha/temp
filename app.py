@@ -54,10 +54,27 @@ def push_to_repo(repo_url):
         commit_message = "Auto-commit: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         execute_git_command(f'git commit -m "{commit_message}"')
         
-        # Push directly to the URL
-        result = execute_git_command(f'git push {repo_url} HEAD:main')
+        # First, try to add the remote
+        execute_git_command(f'git remote add origin {repo_url}')
+        
+        # Try to push to main branch first
+        try:
+            result = execute_git_command('git push -u origin main')
+            if "error" in result.lower():
+                # If main fails, try master branch
+                result = execute_git_command('git push -u origin master')
+        except:
+            # If both main and master fail, try current branch
+            current_branch = get_current_branch()
+            result = execute_git_command(f'git push -u origin {current_branch}')
+        
+        # Remove the remote after pushing
+        execute_git_command('git remote remove origin')
+        
         return f"Successfully pushed changes: {result}"
     except Exception as e:
+        # Clean up remote if it exists
+        execute_git_command('git remote remove origin')
         return f"Error pushing changes: {str(e)}"
 
 def process_git_request(user_input):
